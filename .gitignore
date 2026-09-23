@@ -1,0 +1,73 @@
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac ###
+.DS_Store
+
+### Logs ###
+*.log
+logs/
+
+### Python ###
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+### JMeter generated results ###
+*.jtl
+
+### Android local machine configuration ###
+**/local.properties
+**/.gradle/
+
+### Private deliverables ###
+deliverables/
+
+### Local performance credentials ###
+scripts/jmeter/tokens.csv
+scripts/jmeter/users.csv
+
+### Local secrets and generated test evidence ###
+.env
+.env.*
+!.env.example
+android-ui-tests/artifacts/
+
+### Android UI automation ###
+android-ui-tests/.venv/
+android-ui-tests/artifacts/
+android-ui-tests/.pytest_cache/
+android-ui-tests/__pycache__/
+android-ui-tests/**/__pycache__/
+android-ui-tests/node_modules/

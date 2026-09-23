@@ -1,0 +1,113 @@
+name: Android UI Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "android-app/**"
+      - "android-ui-tests/**"
+      - ".github/workflows/android-ui.yml"
+
+jobs:
+  android-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI_MYSQL_PASSWORD: ci_mysql_123456
+      CI_REDIS_PASSWORD: ci_redis_123456
+      CI_RABBITMQ_USERNAME: ci_rabbit
+      CI_RABBITMQ_PASSWORD: ci_rabbit_123456
+      API_TEST_USERNAME: android_ci_user
+      API_TEST_PASSWORD: android_ci_123456
+      API_TEST_ADMIN_USERNAME: android_ci_admin
+      API_TEST_ADMIN_PASSWORD: android_admin_123456
+      BASE_URL: http://127.0.0.1:8080/api
+      TEST_API_BASE_URL: http://127.0.0.1:8080/api
+      TEST_USERNAME: android_ci_user
+      TEST_PASSWORD: android_ci_123456
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: android-ui-tests/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: android-ui-tests/requirements.txt
+
+      - name: Start backend dependencies
+        run: docker compose -f compose.ci.yml up -d --wait
+
+      - name: Build and start backend
+        run: |
+          mvn --batch-mode -DskipTests package
+          java -jar target/seckill-mall-1.0.0.jar \
+            --spring.datasource.password="$CI_MYSQL_PASSWORD" \
+            --spring.data.redis.password="$CI_REDIS_PASSWORD" \
+            --redisson.address=redis://127.0.0.1:6379 \
+            --spring.rabbitmq.username="$CI_RABBITMQ_USERNAME" \
+            --spring.rabbitmq.password="$CI_RABBITMQ_PASSWORD" \
+            > backend.log 2>&1 &
+          for attempt in {1..60}; do
+            curl --silent --fail "$BASE_URL/product/list?page=1&size=1" && break
+            sleep 2
+          done
+          curl --silent --fail "$BASE_URL/product/list?page=1&size=1"
+
+      - name: Create isolated CI accounts
+        run: bash scripts/ci/bootstrap_test_accounts.sh
+
+      - name: Build Android APK
+        working-directory: android-app
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Install UI test dependencies
+        run: |
+          python -m pip install -r android-ui-tests/requirements.txt
+          npm ci --prefix android-ui-tests
+
+      - name: Run Android smoke tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            mkdir -p android-ui-tests/artifacts
+            npm --prefix android-ui-tests run appium > android-ui-tests/artifacts/appium.log 2>&1 &
+            for attempt in {1..30}; do
+              curl --silent --fail http://127.0.0.1:4723/status && break
+              sleep 2
+            done
+            curl --silent --fail http://127.0.0.1:4723/status
+            python -m pytest android-ui-tests -m smoke \
+              --html=android-ui-tests/artifacts/ci-smoke-report.html \
+              --self-contained-html \
+              --alluredir=android-ui-tests/artifacts/allure-ci-smoke
+
+      - name: Upload Android test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ui-smoke-evidence
+          path: |
+            android-ui-tests/artifacts/
+            backend.log
+          retention-days: 14
+
+      - name: Stop backend dependencies
+        if: always()
+        run: docker compose -f compose.ci.yml down -v

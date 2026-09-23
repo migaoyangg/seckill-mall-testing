@@ -1,0 +1,7 @@
+pytest>=8.0,<9.0
+requests>=2.31,<3.0
+PyMySQL>=1.1,<2.0
+redis>=5.0,<7.0
+
+# 可选报告插件，安装后执行：pytest --html=target/pytest-report.html --self-contained-html
+pytest-html>=4.1,<5.0

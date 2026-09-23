@@ -1,0 +1,13 @@
+{
+  "name": "seckill-mall-android-ui-tests",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "appium": "appium",
+    "driver:list": "appium driver list --installed"
+  },
+  "devDependencies": {
+    "appium": "3.7.0",
+    "appium-uiautomator2-driver": "8.7.0"
+  }
+}

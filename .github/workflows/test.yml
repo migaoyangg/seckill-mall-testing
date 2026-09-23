@@ -1,0 +1,117 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: http://127.0.0.1:8080/api
+      CI_MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
+      CI_REDIS_PASSWORD: ${{ secrets.CI_REDIS_PASSWORD }}
+      CI_RABBITMQ_USERNAME: ${{ secrets.CI_RABBITMQ_USERNAME }}
+      CI_RABBITMQ_PASSWORD: ${{ secrets.CI_RABBITMQ_PASSWORD }}
+      JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
+      API_TEST_USERNAME: ${{ secrets.CI_TEST_USERNAME }}
+      API_TEST_PASSWORD: ${{ secrets.CI_TEST_PASSWORD }}
+      API_TEST_ADMIN_USERNAME: ${{ secrets.CI_ADMIN_USERNAME }}
+      API_TEST_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+      API_TEST_MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
+      API_TEST_REDIS_PASSWORD: ${{ secrets.CI_REDIS_PASSWORD }}
+      API_TEST_PRODUCT_ID: "1"
+      API_TEST_DATA_VALIDATION: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare artifact directory
+        run: mkdir -p target/ci-artifacts
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run Java tests
+        run: mvn --batch-mode test
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install API test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Validate required secrets
+        run: |
+          required=(CI_MYSQL_PASSWORD CI_REDIS_PASSWORD CI_RABBITMQ_USERNAME CI_RABBITMQ_PASSWORD JWT_SECRET API_TEST_USERNAME API_TEST_PASSWORD API_TEST_ADMIN_USERNAME API_TEST_ADMIN_PASSWORD)
+          for name in "${required[@]}"; do
+            test -n "${!name}" || { echo "Missing GitHub Actions secret for ${name}"; exit 1; }
+          done
+
+      - name: Start MySQL Redis and RabbitMQ
+        run: docker compose -f compose.ci.yml up -d --wait
+
+      - name: Package and start application
+        run: |
+          mvn --batch-mode package -DskipTests
+          nohup java -jar target/seckill-mall-1.0.0.jar > target/ci-artifacts/application.log 2>&1 &
+          echo $! > target/ci-artifacts/application.pid
+        env:
+          DB_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.CI_REDIS_PASSWORD }}
+          RABBITMQ_USERNAME: ${{ secrets.CI_RABBITMQ_USERNAME }}
+          RABBITMQ_PASSWORD: ${{ secrets.CI_RABBITMQ_PASSWORD }}
+
+      - name: Wait for application health
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8080/api/actuator/health | jq -e '.status == "UP"' >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Application health check timed out"
+          exit 1
+
+      - name: Create isolated test accounts
+        run: bash scripts/ci/bootstrap_test_accounts.sh
+
+      - name: Run HTTP API regression
+        run: |
+          python -m pytest tests/api -q \
+            --junitxml=target/ci-artifacts/api-junit.xml \
+            --html=target/ci-artifacts/api-report.html \
+            --self-contained-html
+
+      - name: Run data consistency suite
+        run: |
+          python -m pytest tests/api -q -m data_validation \
+            --junitxml=target/ci-artifacts/data-consistency-junit.xml \
+            --html=target/ci-artifacts/data-consistency-report.html \
+            --self-contained-html
+
+      - name: Capture service logs
+        if: always()
+        run: docker compose -f compose.ci.yml logs --no-color > target/ci-artifacts/dependencies.log 2>&1 || true
+
+      - name: Upload reports and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-evidence-${{ github.run_number }}
+          path: |
+            target/ci-artifacts/
+            target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop test environment
+        if: always()
+        run: docker compose -f compose.ci.yml down -v || true
