@@ -237,7 +237,7 @@ project_header(
     "秒购商城服务端测试自动化框架",
     "2026.07 至今",
     "Spring Boot 3  ·  MySQL  ·  Redis  ·  JUnit 5  ·  Mockito  ·  MockMvc  ·  pytest  ·  JMeter",
-    "【项目地址】",
+    "github.com/migaoyangg/seckill-mall-testing",
 )
 project_description(
     "针对秒杀商城在高并发场景下的鉴权、订单状态、支付幂等、库存扣减和异步下单风险，建设覆盖单元、Web、接口、数据一致性及性能场景的自动化测试框架。",
@@ -252,7 +252,7 @@ project_header(
     "秒购商城 Android 客户端自动化测试框架",
     "2026.09 至今",
     "Python  ·  pytest  ·  Appium  ·  UiAutomator2  ·  ADB  ·  Page Object  ·  Allure｜被测端：Kotlin + Retrofit",
-    "【项目地址】",
+    "github.com/migaoyangg/seckill-mall-testing",
 )
 project_description(
     "以秒购商城 Android 客户端为被测对象，打通 Android Emulator、Appium/UiAutomator2、客户端、Spring Boot API 与 MySQL/Redis 的真实端到端测试链路。",
