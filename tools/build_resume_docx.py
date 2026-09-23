@@ -245,7 +245,7 @@ project_description(
 bullet_labeled("分层测试体系", "基于 JUnit 5、Mockito、MockMvc 建立服务层、Web 层与调度任务测试，覆盖鉴权、订单状态、支付幂等、库存回滚及分布式锁，38 条用例全部通过。")
 bullet_labeled("接口自动化框架", "使用 pytest + requests 封装配置、Token、Session、公共断言和动态数据工厂，覆盖用户、商品、订单、退款及秒杀异步链路，28 条真实 HTTP 用例全部通过。")
 bullet_labeled("鉴权与异常治理", "定位参数类型错误返回 HTTP 500、商品管理路径漏拦截及 Token fixture 相互覆盖问题，补充异常处理、权限配置和函数级数据隔离并完成回归。")
-bullet_labeled("CI 工程化", "编写 GitHub Actions 与 Docker Compose 流程，覆盖 MySQL、Redis、RabbitMQ、应用健康检查、真实 HTTP 回归、JUnit/HTML 报告与服务日志归档。")
+bullet_labeled("持续集成", "基于 GitHub Actions 与 Docker Compose 编排 MySQL、Redis、RabbitMQ、应用健康检查及真实 HTTP 回归，实现代码提交后的自动化质量检查，并归档 JUnit/HTML 报告与服务日志。")
 bullet_labeled("性能与一致性", "使用 JMeter 对秒杀入口执行 100 用户瞬时并发，吞吐 123.30 请求/秒、P95 255.6 ms、错误率 0%；100 笔订单异步落库，重复订单、库存差值及队列积压均为 0。")
 
 project_header(

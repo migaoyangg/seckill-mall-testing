@@ -1,5 +1,7 @@
 # 🔥 高并发秒杀商城系统
 
+[![Test](https://github.com/migaoyangg/seckill-mall-testing/actions/workflows/test.yml/badge.svg)](https://github.com/migaoyangg/seckill-mall-testing/actions/workflows/test.yml)
+
 基于 Spring Boot 3 的高并发秒杀商城系统，适合互联网大厂校招后端面试。
 
 ## ✨ 项目亮点
