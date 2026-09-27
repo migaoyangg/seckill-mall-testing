@@ -135,6 +135,10 @@ TOKEN_FILE=scripts/jmeter/tokens.csv SECKILL_GOODS_ID=1 \
 
 配套的 Android UI 自动化项目位于 [`android-ui-tests/`](android-ui-tests/README.md)，采用 Appium + UiAutomator2 + Python + pytest + Page Object，覆盖登录、商品详情、订单查询和下单主链路，并支持失败截图、页面 XML、Logcat、HTML/Allure 报告以及环境变量配置。
 
+## TestFlow 测试任务调度平台
+
+[`testflow-platform/`](testflow-platform/README.md) 提供自动化测试统一执行与质量分析能力，支持项目、环境和套件管理，异步调用 pytest，解析 JUnit 结果，归档 HTML 报告与执行日志，并展示通过率、耗时趋势和高频失败用例。平台内置自检套件，也可接入本仓库的接口与 Android 自动化测试。
+
 ## 简历与面试说明
 
 项目升级点、推荐简历写法和面试追问答案见: `docs/seckill-resume-guide.md`。

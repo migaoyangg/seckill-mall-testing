@@ -3,6 +3,9 @@
 import pytest
 import requests
 
+
+pytestmark = pytest.mark.smoke
+
 def test_login_success(base_url, user_credentials):
     response = requests.post(
         f"{base_url}/user/login",

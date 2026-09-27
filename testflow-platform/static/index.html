@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TestFlow 测试任务调度与质量分析平台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">TF</span><div><strong>TestFlow</strong><small>质量工程工作台</small></div></div>
+    <nav>
+      <button class="nav-item active" data-view="dashboard">质量概览</button>
+      <button class="nav-item" data-view="runs">测试任务</button>
+      <button class="nav-item" data-view="config">项目配置</button>
+      <button class="nav-item" data-view="devices">设备中心</button>
+    </nav>
+    <div class="user-box"><strong id="currentUserName">未登录</strong><small id="currentUserRole">-</small><button id="logoutBtn">退出登录</button></div>
+    <div class="sidebar-foot"><span class="dot"></span><span id="healthText">服务检查中</span></div>
+  </aside>
+
+  <main>
+    <header>
+      <div><p class="eyebrow">AUTOMATION CONTROL CENTER</p><h1 id="pageTitle">质量概览</h1></div>
+      <button class="primary" id="quickRunBtn">创建测试任务</button>
+    </header>
+
+    <section class="view active" id="dashboardView">
+      <div class="metric-grid">
+        <article class="metric"><span>任务总数</span><strong id="totalRuns">0</strong><small>累计执行记录</small></article>
+        <article class="metric"><span>平均通过率</span><strong id="passRate">0%</strong><small>最近100次任务</small></article>
+        <article class="metric"><span>平均耗时</span><strong id="avgDuration">0s</strong><small>已完成任务</small></article>
+        <article class="metric"><span>正在运行</span><strong id="runningRuns">0</strong><small>排队与执行中</small></article>
+      </div>
+      <div class="two-column">
+        <article class="panel wide">
+          <div class="panel-head"><div><h2>最近执行趋势</h2><p>通过率与运行状态</p></div><button class="ghost" data-action="refresh">刷新</button></div>
+          <div id="trendChart" class="trend-chart empty">暂无执行数据</div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><h2>高频失败用例</h2><p>用于识别不稳定测试</p></div></div>
+          <div id="failureList" class="failure-list empty">暂无失败记录</div>
+        </article>
+      </div>
+      <article class="panel">
+        <div class="panel-head"><div><h2>最近任务</h2><p>自动刷新任务状态</p></div><button class="ghost" data-view-target="runs">查看全部</button></div>
+        <div class="table-wrap"><table><thead><tr><th>任务编号</th><th>状态</th><th>通过率</th><th>耗时</th><th>创建时间</th></tr></thead><tbody id="recentRunsBody"></tbody></table></div>
+      </article>
+    </section>
+
+    <section class="view" id="runsView">
+      <article class="panel">
+        <div class="panel-head"><div><h2>测试任务</h2><p>统一执行API、Web和Android自动化套件</p></div><button class="primary" id="newRunBtn">新建任务</button></div>
+        <div class="table-wrap"><table><thead><tr><th>任务编号</th><th>状态</th><th>用例结果</th><th>耗时</th><th>创建人</th><th>操作</th></tr></thead><tbody id="runsBody"></tbody></table></div>
+      </article>
+      <article class="panel detail-panel" id="runDetailPanel">
+        <div class="panel-head"><div><h2>任务详情</h2><p id="runDetailSubtitle">选择一条任务查看结果</p></div></div>
+        <div id="runDetail" class="empty">尚未选择任务</div>
+      </article>
+    </section>
+
+    <section class="view" id="configView">
+      <div class="three-column">
+        <article class="panel"><div class="panel-head"><div><h2>测试项目</h2><p>代码仓库与工作目录</p></div></div><div id="projectList" class="config-list"></div></article>
+        <article class="panel"><div class="panel-head"><div><h2>测试环境</h2><p>服务地址与运行变量</p></div></div><div id="environmentList" class="config-list"></div></article>
+        <article class="panel"><div class="panel-head"><div><h2>测试套件</h2><p>pytest路径与执行标签</p></div></div><div id="suiteList" class="config-list"></div></article>
+      </div>
+      <article class="panel">
+        <div class="panel-head"><div><h2>定时计划</h2><p>按固定分钟间隔自动创建测试任务</p></div></div>
+        <div id="scheduleList" class="config-list"></div>
+      </article>
+      <article class="panel config-form-panel">
+        <div class="panel-head"><div><h2>快速添加配置</h2><p>创建环境或测试套件后即可发起任务</p></div></div>
+        <div class="form-tabs"><button class="tab active" data-form="environment">添加环境</button><button class="tab" data-form="suite">添加套件</button><button class="tab" data-form="schedule">添加定时计划</button></div>
+        <form id="environmentForm" class="inline-form">
+          <label>所属项目<select name="project_id" class="project-select" required></select></label>
+          <label>环境名称<input name="name" placeholder="本地测试环境" required></label>
+          <label>服务地址<input name="base_url" placeholder="http://127.0.0.1:8080/api"></label>
+          <label class="grow">环境变量 JSON<input name="variables" placeholder='{"API_TEST_TIMEOUT":"5"}'></label>
+          <button class="primary" type="submit">保存环境</button>
+        </form>
+        <form id="suiteForm" class="inline-form hidden">
+          <label>所属项目<select name="project_id" class="project-select" required></select></label>
+          <label>套件名称<input name="name" placeholder="接口冒烟测试" required></label>
+          <label>类型<select name="test_type"><option value="api">API</option><option value="android">Android</option><option value="web">Web</option><option value="unit">Unit</option></select></label>
+          <label>测试路径<input name="test_path" placeholder="tests/api" required></label>
+          <label>pytest标签<input name="marker" placeholder="smoke"></label>
+          <label>超时秒数<input name="timeout_seconds" type="number" value="900" min="10"></label>
+          <button class="primary" type="submit">保存套件</button>
+        </form>
+        <form id="scheduleForm" class="inline-form hidden">
+          <label>计划名称<input name="name" placeholder="每小时接口冒烟" required></label>
+          <label>测试环境<select name="environment_id" id="scheduleEnvironment" required></select></label>
+          <label>测试套件<select name="suite_id" id="scheduleSuite" required></select></label>
+          <label>间隔分钟<input name="interval_minutes" type="number" value="60" min="1" max="10080"></label>
+          <button class="primary" type="submit">保存计划</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="view" id="devicesView">
+      <article class="panel">
+        <div class="panel-head"><div><h2>Android设备中心</h2><p>通过ADB同步设备并为UI任务提供独占锁</p></div><button class="primary" id="scanDevicesBtn">扫描设备</button></div>
+        <div class="table-wrap"><table><thead><tr><th>序列号</th><th>状态</th><th>型号</th><th>Android</th><th>占用任务</th><th>最后发现</th></tr></thead><tbody id="devicesBody"></tbody></table></div>
+      </article>
+      <article class="panel"><div class="panel-head"><div><h2>设备锁说明</h2><p>Android任务开始前自动申请，结束、失败、取消后自动释放</p></div></div><p class="hint">当测试套件启用“需要设备”时，Worker只会选择在线且未锁定的设备，并向pytest注入 ANDROID_SERIAL 与 UDID。没有可用设备时任务会明确失败，不会与其他任务争抢同一模拟器。</p></article>
+    </section>
+  </main>
+
+  <div id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <span class="brand-mark">TF</span><p class="eyebrow">TEST AUTOMATION PLATFORM</p><h1>登录 TestFlow</h1><p>统一调度自动化测试、设备与质量报告</p>
+      <label>用户名<input id="loginUsername" value="admin" autocomplete="username" required></label>
+      <label>密码<input id="loginPassword" type="password" placeholder="请输入密码" autocomplete="current-password" required></label>
+      <button class="primary" type="submit">登录平台</button><small>本地默认账号：admin / testflow123</small>
+    </form>
+  </div>
+
+  <dialog id="runDialog">
+    <form id="runForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">NEW AUTOMATION RUN</p><h2>创建测试任务</h2></div><button type="button" class="icon-button" id="closeDialog">×</button></div>
+      <label>测试环境<select id="runEnvironment" required></select></label>
+      <label>测试套件<select id="runSuite" required></select></label>
+      <label>创建人<input id="runCreator" value="蒙冠源" maxlength="80"></label>
+      <p class="hint">环境与套件必须属于同一个测试项目。任务创建后由Worker异步执行。</p>
+      <div class="dialog-actions"><button type="button" class="ghost" id="cancelDialog">取消</button><button type="submit" class="primary">开始执行</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

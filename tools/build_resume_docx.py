@@ -13,12 +13,12 @@ DARK = RGBColor(35, 35, 35)
 GRAY = RGBColor(95, 95, 95)
 
 
-def set_cn_font(run, name="Heiti SC", size=9.8, bold=False, color=DARK):
+def set_cn_font(run, name="STHeiti", size=9.8, bold=False, color=DARK):
     run.font.name = name
     run._element.rPr.rFonts.set(qn("w:ascii"), name)
     run._element.rPr.rFonts.set(qn("w:hAnsi"), name)
     run._element.rPr.rFonts.set(qn("w:eastAsia"), name)
-    run.font.size = Pt(size)
+    run.font.size = Pt(size + 1)
     run.font.bold = bold
     run.font.color.rgb = color
 
@@ -107,20 +107,20 @@ sec.header_distance = Inches(0.15)
 sec.footer_distance = Inches(0.15)
 
 normal = doc.styles["Normal"]
-normal.font.name = "Heiti SC"
-normal._element.rPr.rFonts.set(qn("w:ascii"), "Heiti SC")
-normal._element.rPr.rFonts.set(qn("w:hAnsi"), "Heiti SC")
-normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Heiti SC")
-normal.font.size = Pt(9.8)
+normal.font.name = "STHeiti"
+normal._element.rPr.rFonts.set(qn("w:ascii"), "STHeiti")
+normal._element.rPr.rFonts.set(qn("w:hAnsi"), "STHeiti")
+normal._element.rPr.rFonts.set(qn("w:eastAsia"), "STHeiti")
+normal.font.size = Pt(10.8)
 normal.font.color.rgb = DARK
 normal.paragraph_format.space_after = Pt(0)
 
 for style_name in ("Title", "Heading 1", "Heading 2"):
     style = doc.styles[style_name]
-    style.font.name = "Heiti SC"
-    style._element.rPr.rFonts.set(qn("w:ascii"), "Heiti SC")
-    style._element.rPr.rFonts.set(qn("w:hAnsi"), "Heiti SC")
-    style._element.rPr.rFonts.set(qn("w:eastAsia"), "Heiti SC")
+    style.font.name = "STHeiti"
+    style._element.rPr.rFonts.set(qn("w:ascii"), "STHeiti")
+    style._element.rPr.rFonts.set(qn("w:hAnsi"), "STHeiti")
+    style._element.rPr.rFonts.set(qn("w:eastAsia"), "STHeiti")
     style.font.color.rgb = RGBColor(0, 0, 0)
 
 # Header with photo placeholder
@@ -149,7 +149,7 @@ add_text(p, "求职意向  软件测试开发工程师", bold=True, size=10.2, c
 p = left.add_paragraph()
 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 format_para(p, after=1, line=1)
-add_text(p, "电话  16677266727   ｜   邮箱  migoyang66@163.com   ｜   意向城市  北京 / 天津", size=8.7, color=GRAY)
+add_text(p, "电话  16677266727  ｜  邮箱  migoyang66@163.com  ｜  意向城市  北京 / 天津", size=8.2, color=GRAY)
 
 set_cell_border(right, color="BFBFBF", size="8")
 shade_cell(right, "F2F2F2")
@@ -182,23 +182,33 @@ add_text(p, "软件测试基础、数据结构与算法、操作系统、计算�
 
 section_heading(doc, "项目经历")
 
-def project_header(title, date, tech, link):
+def project_header(title, date, tech, link, role="个人独立开发"):
     table = doc.add_table(rows=1, cols=2)
     table.autofit = False
-    table.columns[0].width = Inches(5.95)
-    table.columns[1].width = Inches(1.55)
+    table.columns[0].width = Inches(6.10)
+    table.columns[1].width = Inches(1.40)
     for cell in table.rows[0].cells:
         set_cell_margin(cell, 0, 0, 0, 0)
         set_cell_border(cell, color="FFFFFF", size="0")
     p1 = table.cell(0, 0).paragraphs[0]
     format_para(p1, before=2, after=1, line=1)
     add_text(p1, title, bold=True, size=10.7, color=RGBColor(0, 0, 0))
-    add_text(p1, "   GitHub  ", bold=True, size=8.0, color=GRAY)
-    add_text(p1, link, size=8.0, color=GRAY)
+    if len(link) <= 55:
+        add_text(p1, "   GitHub  ", bold=True, size=7.2, color=GRAY)
+        add_text(p1, link, size=7.2, color=GRAY)
+    else:
+        p_link = table.cell(0, 0).add_paragraph()
+        format_para(p_link, after=0.5, line=1)
+        add_text(p_link, "GitHub  ", bold=True, size=7.2, color=GRAY)
+        add_text(p_link, link, size=7.2, color=GRAY)
     p2 = table.cell(0, 1).paragraphs[0]
     p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     format_para(p2, before=1, after=0.5, line=1)
     add_text(p2, date, size=9.0, color=GRAY)
+    p2 = table.cell(0, 1).add_paragraph()
+    p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    format_para(p2, after=0.5, line=1)
+    add_text(p2, role, bold=True, size=7.5, color=NAVY)
     p = doc.add_paragraph()
     format_para(p, after=1.3, line=1)
     add_text(p, tech, bold=True, size=8.65, color=NAVY)
@@ -234,40 +244,39 @@ def bullet_labeled(label, text, marker=None):
 
 
 project_header(
-    "秒购商城服务端测试自动化框架",
+    "秒购商城全链路自动化测试体系",
     "2026.07 至今",
-    "Spring Boot 3  ·  MySQL  ·  Redis  ·  JUnit 5  ·  Mockito  ·  MockMvc  ·  pytest  ·  JMeter",
-    "github.com/migaoyangg/seckill-mall-testing",
+    "Java  ·  JUnit 5  ·  MockMvc  ·  Python  ·  pytest  ·  requests  ·  Appium  ·  UiAutomator2  ·  JMeter",
+    "https://github.com/migaoyangg/seckill-mall-testing",
 )
 project_description(
-    "针对秒杀商城在高并发场景下的鉴权、订单状态、支付幂等、库存扣减和异步下单风险，建设覆盖单元、Web、接口、数据一致性及性能场景的自动化测试框架。",
+    "面向用户、商品、订单、支付退款和限时秒杀业务，建立服务端接口与 Android 客户端分层自动化测试体系，覆盖权限、异常、幂等、状态流转及端到端业务流程。",
 )
-bullet_labeled("分层测试体系", "基于 JUnit 5、Mockito、MockMvc 建立服务层、Web 层与调度任务测试，覆盖鉴权、订单状态、支付幂等、库存回滚及分布式锁，38 条用例全部通过。")
-bullet_labeled("接口自动化框架", "使用 pytest + requests 封装配置、Token、Session、公共断言和动态数据工厂，覆盖用户、商品、订单、退款及秒杀异步链路，28 条真实 HTTP 用例全部通过。")
-bullet_labeled("鉴权与异常治理", "定位参数类型错误返回 HTTP 500、商品管理路径漏拦截及 Token fixture 相互覆盖问题，补充异常处理、权限配置和函数级数据隔离并完成回归。")
-bullet_labeled("持续集成", "基于 GitHub Actions 与 Docker Compose 编排 MySQL、Redis、RabbitMQ、应用健康检查及真实 HTTP 回归，实现代码提交后的自动化质量检查，并归档 JUnit/HTML 报告与服务日志。")
-bullet_labeled("性能与一致性", "使用 JMeter 对秒杀入口执行 100 用户瞬时并发，吞吐 123.30 请求/秒、P95 255.6 ms、错误率 0%；100 笔订单异步落库，重复订单、库存差值及队列积压均为 0。")
+bullet_labeled("服务端自动化", "使用 JUnit 5、Mockito、MockMvc 覆盖登录、缓存、订单取消、库存回补、支付幂等及秒杀异常回滚；基于 pytest + requests 封装多角色账号、Token、公共断言和数据清理。")
+bullet_labeled("移动端自动化", "基于 Appium + UiAutomator2 + Page Object 封装登录、首页和商品弹窗页面，覆盖登录校验、会话保持、商品浏览、订单切换及创建订单，失败时采集截图、页面 XML 和 Logcat。")
+bullet_labeled("性能与一致性", "使用 JMeter 在单机开发环境执行 100 用户瞬时并发，吞吐量 123.30 请求/秒，P95 255.6 ms、P99 283.9 ms，错误率 0%；100 笔订单全部异步落库，重复订单、库存差值和队列积压均为 0。")
+bullet_labeled("缺陷定位", "结合接口响应、应用日志及 MySQL/Redis 状态，定位并修复参数类型异常返回 HTTP 500、管理员路径漏拦截和 Token fixture 复用导致的测试不稳定问题。")
+bullet_labeled("测试规模", "累计沉淀 79 条自动化用例（Java 38 条、HTTP 接口 28 条、Android UI 13 条），覆盖用户、商品、订单、支付退款、秒杀及 Android 核心链路；Java、HTTP 接口与 Android UI 全量回归分别 38/38、28/28、13/13 通过。")
 
 project_header(
-    "秒购商城 Android 客户端自动化测试框架",
+    "TestFlow 测试任务调度与质量分析平台",
     "2026.09 至今",
-    "Python  ·  pytest  ·  Appium  ·  UiAutomator2  ·  ADB  ·  Page Object  ·  Allure｜被测端：Kotlin + Retrofit",
-    "github.com/migaoyangg/seckill-mall-testing",
+    "Python  ·  FastAPI  ·  SQLAlchemy  ·  SQLite  ·  Redis  ·  WebSocket  ·  pytest  ·  Appium  ·  ADB",
+    "https://github.com/migaoyangg/seckill-mall-testing/tree/main/testflow-platform",
 )
 project_description(
-    "以秒购商城 Android 客户端为被测对象，打通 Android Emulator、Appium/UiAutomator2、客户端、Spring Boot API 与 MySQL/Redis 的真实端到端测试链路。",
+    "针对自动化脚本分散执行、环境配置不统一、Android 设备争抢和测试证据难追溯的问题，开发统一测试调度平台，形成配置、调度、执行、分析与归档闭环。",
 )
-bullet_labeled("页面对象架构", "设计 BasePage、LoginPage、HomePage、ProductDialog 4 个页面对象类，分离元素定位、页面操作与断言，封装显式等待、点击输入、文本读取和截图能力。")
-bullet_labeled("配置与数据保护", "使用 fixture 管理 Driver、登录前置与测试数据；UI 下单并验证后通过业务 API 自动取消新增订单、恢复库存，账号与设备配置均由环境变量注入。")
-bullet_labeled("端到端回归", "编写 13 条 UI 自动化用例，覆盖登录校验、应用重启状态恢复、商品详情、页面切换、订单查询与创建订单，全量回归 13 条全部通过，耗时 202.47 秒。")
-bullet_labeled("失败取证与稳定性", "失败时自动保存截图、页面 XML 和 Logcat 并生成 HTML/Allure 结果；定位弹窗资源 ID 与异步文案读取问题，修复后复测通过。")
-bullet_labeled("Android CI", "编写 GitHub Actions 工作流，自动启动后端依赖与 Android Emulator、构建 APK、启动 Appium、执行 smoke 用例并归档测试证据。")
+bullet_labeled("调度与执行", "设计项目、环境、套件、任务、用例结果和证据模型，通过异步 Worker 调用 pytest，支持状态流转、超时取消、失败重跑、定时计划及 Redis 队列，并自动识别套件虚拟环境。")
+bullet_labeled("权限与安全", "实现 ADMIN、TESTER、VIEWER 三级 RBAC，采用 PBKDF2-SHA256 加盐存储密码、摘要化保存会话令牌；限制执行目录和 pytest marker，并使用无 shell 子进程。")
+bullet_labeled("设备与质量分析", "通过 ADB 发现设备并实现独占锁，自动管理 Appium 生命周期；使用 WebSocket 推送日志，解析 JUnit XML，归档测试证据并统计通过率、平均耗时、执行趋势和高频失败用例。")
+bullet_labeled("核心成果", "平台核心模块测试 8/8 通过；成功调度接口冒烟 12/12 和 Android UI 回归 13/13，任务结束后自动释放设备锁与平台启动的 Appium 进程，完成全链路验证。")
 
 section_heading(doc, "专业技能")
 skill_texts = [
     ("编程与自动化", "Java、Python、SQL；JUnit 5、Mockito、MockMvc、pytest、requests、Appium、Page Object"),
     ("接口与性能", "Postman、curl、JMeter；掌握接口关联、参数化及 P95/P99、错误率等指标"),
-    ("数据与工程", "MySQL、Redis、RabbitMQ；Git、Maven、Linux、ADB、Docker Compose、GitHub Actions；了解 Jenkins"),
+    ("测试报告与工程", "Allure、pytest-html；MySQL、Redis、RabbitMQ、Git、Maven、Linux、ADB、Docker Compose、GitHub Actions"),
     ("AI 工具", "使用 ChatGPT、Codex 辅助用例设计、脚本开发、代码检查、问题排查和文档整理"),
 ]
 for label, value in skill_texts:

@@ -1,6 +1,10 @@
 """商品接口的基础接口自动化测试。"""
 
+import pytest
 import requests
+
+
+pytestmark = pytest.mark.smoke
 
 def test_search_product_success(base_url):
     response = requests.get(

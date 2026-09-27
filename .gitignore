@@ -71,3 +71,6 @@ android-ui-tests/.pytest_cache/
 android-ui-tests/__pycache__/
 android-ui-tests/**/__pycache__/
 android-ui-tests/node_modules/
+
+### TestFlow local database and execution evidence ###
+testflow-platform/data/
