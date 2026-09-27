@@ -2,7 +2,7 @@
 
 [![Test](https://github.com/migaoyangg/seckill-mall-testing/actions/workflows/test.yml/badge.svg)](https://github.com/migaoyangg/seckill-mall-testing/actions/workflows/test.yml)
 
-基于 Spring Boot 3 的高并发秒杀商城系统，适合互联网大厂校招后端面试。
+基于 Spring Boot 3 构建的高并发秒杀商城系统，覆盖商品、订单、支付退款、库存一致性与异步秒杀等核心业务，并配套服务端、移动端及性能自动化测试体系。
 
 ## ✨ 项目亮点
 
@@ -138,10 +138,6 @@ TOKEN_FILE=scripts/jmeter/tokens.csv SECKILL_GOODS_ID=1 \
 ## TestFlow 测试任务调度平台
 
 [`testflow-platform/`](testflow-platform/README.md) 提供自动化测试统一执行与质量分析能力，支持项目、环境和套件管理，异步调用 pytest，解析 JUnit 结果，归档 HTML 报告与执行日志，并展示通过率、耗时趋势和高频失败用例。平台内置自检套件，也可接入本仓库的接口与 Android 自动化测试。
-
-## 简历与面试说明
-
-项目升级点、推荐简历写法和面试追问答案见: `docs/seckill-resume-guide.md`。
 
 ## 📁 项目结构
 

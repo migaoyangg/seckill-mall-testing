@@ -53,4 +53,4 @@
 - `report-seckill-entry-100-valid/index.html`
 - `report-seckill-entry-100-valid/statistics.json`
 
-`target/` 默认不提交版本库，投递或演示前应将HTML报告作为CI制品或单独归档。
+`target/` 默认不提交版本库，需要审阅测试证据时可从 CI 制品下载 HTML 报告，或按发布批次单独归档。
