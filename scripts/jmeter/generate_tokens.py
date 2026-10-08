@@ -117,6 +117,11 @@ def main() -> int:
     )
     parser.add_argument("--output", default="scripts/jmeter/tokens.csv", help="Output token CSV path.")
     parser.add_argument("--users-output", default="scripts/jmeter/users.csv", help="Output user CSV path.")
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Append generated rows to existing CSV files while keeping a single header.",
+    )
     parser.add_argument("--timeout", type=float, default=8.0, help="HTTP timeout in seconds.")
     parser.add_argument("--sleep", type=float, default=0.0, help="Sleep seconds between users.")
     args = parser.parse_args()
@@ -128,8 +133,24 @@ def main() -> int:
     if not args.password:
         raise ApiError("--password or JMETER_USER_PASSWORD is required")
 
+    output = Path(args.output)
+    users_output = Path(args.users_output)
     token_rows: list[list[str]] = [["token"]]
     user_rows: list[list[str]] = [["username", "password", "phone"]]
+
+    if args.append:
+        if output.exists():
+            with output.open(newline="", encoding="utf-8") as fp:
+                existing_tokens = list(csv.reader(fp))
+            if existing_tokens and existing_tokens[0] != ["token"]:
+                raise ApiError(f"Unexpected token CSV header in {output}")
+            token_rows.extend(existing_tokens[1:])
+        if users_output.exists():
+            with users_output.open(newline="", encoding="utf-8") as fp:
+                existing_users = list(csv.reader(fp))
+            if existing_users and existing_users[0] != ["username", "password", "phone"]:
+                raise ApiError(f"Unexpected user CSV header in {users_output}")
+            user_rows.extend(existing_users[1:])
 
     for offset in range(args.count):
         index = args.start + offset
@@ -147,20 +168,18 @@ def main() -> int:
         if args.sleep > 0:
             time.sleep(args.sleep)
 
-    output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as fp:
         writer = csv.writer(fp)
         writer.writerows(token_rows)
 
-    users_output = Path(args.users_output)
     users_output.parent.mkdir(parents=True, exist_ok=True)
     with users_output.open("w", newline="", encoding="utf-8") as fp:
         writer = csv.writer(fp)
         writer.writerows(user_rows)
 
-    print(f"wrote {args.count} tokens to {output}")
-    print(f"wrote {args.count} users to {users_output}")
+    print(f"wrote {len(token_rows) - 1} total tokens to {output}")
+    print(f"wrote {len(user_rows) - 1} total users to {users_output}")
     return 0
 
 

@@ -203,15 +203,17 @@ def test_refund_restores_mysql_stock_and_persists_refund_state(
     base_url,
     test_config,
     user_session,
-    order_factory,
+    isolated_order_data,
     mysql_probe,
+    business_evidence,
 ):
     """退款后MySQL订单状态和普通商品库存保持一致。"""
-    stock_before = mysql_probe.product_stock(test_config.product_id)
-    order_no = order_factory()
+    product_id = isolated_order_data["product_id"]
+    stock_before = mysql_probe.product_stock(product_id)
+    order_no = isolated_order_data["create_order"]()
 
-    stock_after_create = mysql_probe.product_stock(test_config.product_id)
-    assert stock_after_create == stock_before - 1
+    stock_after_create = mysql_probe.product_stock(product_id)
+    business_evidence.equal("下单后 MySQL 商品库存", stock_after_create, stock_before - 1)
 
     assert_api_response(
         user_session.post(
@@ -223,9 +225,9 @@ def test_refund_restores_mysql_stock_and_persists_refund_state(
 
     order = mysql_probe.order(order_no)
     assert order is not None
-    assert order["status"] == 7
+    business_evidence.equal("MySQL 退款订单状态", order["status"], 7)
     assert order["refund_time"] is not None
-    assert mysql_probe.product_stock(test_config.product_id) == stock_before
+    business_evidence.equal("退款后库存恢复", mysql_probe.product_stock(product_id), stock_before)
 
 
 @pytest.mark.destructive
@@ -233,14 +235,15 @@ def test_refund_restores_mysql_stock_and_persists_refund_state(
 def test_cancel_removes_order_timeout_key(
     base_url,
     user_session,
-    order_factory,
+    isolated_order_data,
     redis_probe,
+    business_evidence,
 ):
     """普通订单创建后写入超时Key，取消后删除该Key。"""
-    order_no = order_factory()
+    order_no = isolated_order_data["create_order"]()
     timeout_key = f"order:timeout:{order_no}"
-    assert redis_probe.exists(timeout_key)
+    business_evidence.equal("下单后超时 Key", redis_probe.exists(timeout_key), True)
 
     assert_api_response(user_session.post(f"{base_url}/order/cancel/{order_no}"))
 
-    assert not redis_probe.exists(timeout_key)
+    business_evidence.equal("取消后超时 Key 清理", redis_probe.exists(timeout_key), False)

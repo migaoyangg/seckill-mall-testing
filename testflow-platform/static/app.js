@@ -1,5 +1,7 @@
 const state = {projects: [], environments: [], suites: [], schedules: [], runs: [], devices: [], token: localStorage.getItem('testflow_token') || '', user: null};
 let activeLogSocket = null;
+let activeRun = null;
+let defectConfigured = false;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -121,14 +123,100 @@ async function scanDevices() {
 async function openRun(id) {
   switchView('runs');
   const run = await api(`/api/runs/${id}`);
-  $('#runDetailSubtitle').textContent = `${run.run_no} · ${run.project_name} · ${run.suite_name}`;
+  activeRun = run;
+  defectConfigured = (await api('/api/defects/config')).configured;
+  $('#runDetailSubtitle').textContent = `${run.run_no} · ${run.project_name} · ${run.suite_name}${run.revision_label ? ` · 版本 ${run.revision_label}` : ''}${run.regression_defect_id ? ` · 缺陷复测 #${run.regression_defect_id}` : ''}`;
   const passRate = run.total_count ? (run.passed_count / run.total_count * 100).toFixed(2) : '0.00';
   const artifacts = run.artifacts.map(item => `<a href="${item.file_path}" target="_blank">${escapeHtml(item.file_name)}</a>`).join('');
-  const cases = run.case_results.map(item => `<tr><td>${escapeHtml(item.class_name)}</td><td>${escapeHtml(item.case_name)}</td><td>${statusBadge(item.status)}</td><td>${item.duration.toFixed(3)}s</td><td>${escapeHtml(item.error_message || '-')}</td></tr>`).join('');
+  const cases = run.case_results.map(item => {
+    const defect = run.defects.find(link => link.case_result_id === item.id);
+    const action = defect ? `<a href="${escapeHtml(defect.external_url)}" target="_blank" rel="noopener noreferrer">禅道 #${escapeHtml(defect.external_id)}</a>${state.user?.role !== 'VIEWER' ? ` <button class="link-button" onclick="regressDefect(${defect.id})">复测</button>` : ''}<button class="link-button" onclick="showRegressionHistory(${defect.id})">复测记录</button>` : item.status === 'FAILED' && state.user?.role !== 'VIEWER' ? `<button class="link-button" onclick="openDefectDialog(${item.id})" ${defectConfigured ? '' : 'disabled title="请先配置禅道连接"'}>提报缺陷</button>` : '-';
+    return `<tr><td>${escapeHtml(item.class_name)}</td><td>${escapeHtml(item.case_name)}</td><td>${statusBadge(item.status)}</td><td>${item.duration.toFixed(3)}s</td><td>${escapeHtml(item.error_message || '-')}</td><td>${action}</td></tr>`;
+  }).join('');
   $('#runDetail').classList.remove('empty');
-  $('#runDetail').innerHTML = `<div class="detail-grid"><div class="detail-stat"><small>状态</small><strong>${statusBadge(run.status)}</strong></div><div class="detail-stat"><small>用例数</small><strong>${run.total_count}</strong></div><div class="detail-stat"><small>通过率</small><strong>${passRate}%</strong></div><div class="detail-stat"><small>耗时</small><strong>${run.duration}s</strong></div><div class="detail-stat"><small>环境</small><strong>${escapeHtml(run.environment_name)}</strong></div></div>${run.error_message ? `<p class="hint">${escapeHtml(run.error_message)}</p>` : ''}<div class="artifact-links">${artifacts || '<span class="hint">任务完成后生成报告与日志</span>'}</div><h3>实时执行日志</h3><pre id="liveRunLog" class="live-log">正在连接日志流...</pre><div class="table-wrap case-list"><table><thead><tr><th>类</th><th>用例</th><th>状态</th><th>耗时</th><th>错误信息</th></tr></thead><tbody>${cases || '<tr><td colspan="5" class="empty">暂无用例结果</td></tr>'}</tbody></table></div>`;
+  $('#runDetail').innerHTML = `<div class="detail-grid"><div class="detail-stat"><small>状态</small><strong>${statusBadge(run.status)}</strong></div><div class="detail-stat"><small>用例数</small><strong>${run.total_count}</strong></div><div class="detail-stat"><small>通过率</small><strong>${passRate}%</strong></div><div class="detail-stat"><small>耗时</small><strong>${run.duration}s</strong></div><div class="detail-stat"><small>环境</small><strong>${escapeHtml(run.environment_name)}</strong></div></div>${run.error_message ? `<p class="hint">${escapeHtml(run.error_message)}</p>` : ''}<div class="artifact-links">${artifacts || '<span class="hint">任务完成后生成报告与日志</span>'}</div><h3>实时执行日志</h3><pre id="liveRunLog" class="live-log">正在连接日志流...</pre><div class="table-wrap case-list"><table><thead><tr><th>类</th><th>用例</th><th>状态</th><th>耗时</th><th>错误信息</th><th>缺陷</th></tr></thead><tbody>${cases || '<tr><td colspan="6" class="empty">暂无用例结果</td></tr>'}</tbody></table></div>`;
   connectRunLog(id);
+  if (run.failed_count > 0 && state.user?.role !== 'VIEWER') {
+    const button = document.createElement('button');
+    button.className = 'ghost'; button.textContent = '仅重跑失败用例';
+    button.onclick = () => retryFailedCases(id);
+    $('#runDetail').prepend(button);
+  }
+  const evidence = await api(`/api/runs/${id}/business-evidence`).catch(() => ({checks:[]}));
+  if (activeRun?.id === id && evidence.checks.length) {
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>业务数据校验与清理</h3><div class="table-wrap"><table><thead><tr><th>用例</th><th>阶段</th><th>校验项</th><th>预期</th><th>实际</th><th>结果</th></tr></thead><tbody>${evidence.checks.map(check => `<tr><td>${escapeHtml(check.case_id)}</td><td>${escapeHtml({setup:'准备数据',assertion:'业务断言',cleanup:'清理数据'}[check.phase] || check.phase)}</td><td>${escapeHtml(check.check)}</td><td>${escapeHtml(check.expected)}</td><td>${escapeHtml(check.actual)}</td><td>${statusBadge(check.status)}</td></tr>`).join('')}</tbody></table></div>`;
+    $('#runDetail').appendChild(section);
+  }
+  const quality = await api(`/api/runs/${id}/quality`).catch(() => null);
+  if (quality && activeRun?.id === id) {
+    const section = document.createElement('section');
+    section.innerHTML = `<h3>回归对比与用例稳定性</h3><label>基准任务 ID <input type="number" min="1" id="baselineRunId" value="${quality.baseline_id || ''}"><button class="ghost" onclick="compareWithBaseline(${id})">对比</button></label><div id="comparisonResult">${renderComparison(quality.comparison)}</div><p class="hint">基于同环境、同套件最近 ${quality.sample_runs} 次完整执行识别疑似不稳定用例；通过与失败交替也可能来自代码变更，需结合日志人工判断。</p>${quality.suspected_unstable.map(item => `<p>${escapeHtml(item.case)}：${item.failures}/${item.executions} 次失败 ${item.history.map(entry => `<button class="link-button" onclick="openRun(${entry.run_id})">#${entry.run_id} ${escapeHtml(entry.status)}</button>`).join(' / ')}</p>`).join('') || '<p class="hint">暂无满足采样条件的疑似不稳定用例。</p>'}`;
+    $('#runDetail').appendChild(section);
+  }
 }
+
+function renderComparison(comparison) {
+  if (!comparison) return '<p class="hint">任务完成且存在同环境、同套件的基准任务后可对比。</p>';
+  const labels = {new_failures:'新增失败',fixed:'已修复',persistent_failures:'持续失败',added:'新增用例',not_executed:'未执行',skipped:'跳过'};
+  return Object.entries(labels).map(([key,label]) => `<details><summary>${label}：${comparison[key].length}</summary>${comparison[key].map(value => `<p>${escapeHtml(value)}</p>`).join('') || '<p>无</p>'}</details>`).join('');
+}
+
+async function compareWithBaseline(runId) {
+  try { const data = await api(`/api/runs/${runId}/quality?baseline_id=${Number($('#baselineRunId').value)}`); $('#comparisonResult').innerHTML = renderComparison(data.comparison); }
+  catch (error) { toast(error.message); }
+}
+
+async function retryFailedCases(runId) {
+  try { const run = await api(`/api/runs/${runId}/retry-failed`, {method:'POST'}); toast('已创建失败用例重跑任务'); await openRun(run.id); }
+  catch (error) { toast(error.message); }
+}
+
+async function regressDefect(defectId) {
+  try { const run = await api(`/api/defects/${defectId}/regression`, {method:'POST'}); toast('已创建缺陷复测任务'); await openRun(run.id); }
+  catch (error) { toast(error.message); }
+}
+
+async function showRegressionHistory(defectId) {
+  try {
+    const history = await api(`/api/defects/${defectId}/regressions`);
+    let panel = $('#regressionHistory');
+    if (!panel) { panel = document.createElement('section'); panel.id = 'regressionHistory'; $('#runDetail').appendChild(panel); }
+    panel.innerHTML = `<h3>缺陷复测记录</h3>${history.length ? history.map(run => `<p><button class="link-button" onclick="openRun(${run.id})">${escapeHtml(run.run_no)}</button> ${statusBadge(run.status)} (${run.passed}/${run.total}) ${run.verified ? '复测通过' : '尚未验证通过'}</p>`).join('') : '<p class="hint">暂无复测任务</p>'}`;
+  }
+  catch (error) { toast(error.message); }
+}
+
+async function checkExecutionEnvironment() {
+  const result = await api('/api/preflight', {method:'POST', body:JSON.stringify({environment_id:Number($('#runEnvironment').value), suite_id:Number($('#runSuite').value)})});
+  $('#preflightResult').textContent = result.checks.map(check => `${check.ready ? '✓' : '✗'} ${check.name}：${check.detail}`).join('\n');
+  return result.ready;
+}
+$('#preflightBtn').addEventListener('click', () => checkExecutionEnvironment().catch(error => toast(error.message)));
+
+function openDefectDialog(caseId) {
+  const item = activeRun?.case_results.find(result => result.id === caseId && result.status === 'FAILED');
+  if (!item || !defectConfigured) return;
+  $('#defectCaseId').value = caseId;
+  $('#defectTitle').value = `[${activeRun.project_name}] ${item.case_name} 执行失败`;
+  $('#defectSteps').value = `测试任务：${activeRun.run_no}\n环境：${activeRun.environment_name}\n测试套件：${activeRun.suite_name}\n失败用例：${item.class_name} / ${item.case_name}\n\n[复现步骤]\n请补充人工复现步骤。\n\n[实际结果]\n${(item.error_message || '参见执行日志').slice(0, 3000)}\n\n[预期结果]\n请补充预期行为。\n\n[测试证据]\n${activeRun.artifacts.map(a => `${a.file_name}: ${location.origin}${a.file_path}`).join('\n') || '参见任务执行日志'}`;
+  $('#defectDialog').showModal();
+}
+
+$('#defectForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!confirm('已确认这是真实产品缺陷，提交到禅道？')) return;
+  const button = $('#submitDefectBtn');
+  button.disabled = true;
+  try {
+    const runId = activeRun.id;
+    const created = await api(`/api/runs/${runId}/defects`, {method:'POST', body:JSON.stringify({case_result_id:Number($('#defectCaseId').value), title:$('#defectTitle').value.trim(), steps:$('#defectSteps').value.trim(), severity:Number($('#defectSeverity').value), priority:Number($('#defectPriority').value)})});
+    $('#defectDialog').close(); toast(`已提交禅道缺陷 #${created.external_id}`); await openRun(runId);
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
+});
+$('#closeDefectDialog').addEventListener('click', () => $('#defectDialog').close());
+$('#cancelDefectDialog').addEventListener('click', () => $('#defectDialog').close());
 
 function connectRunLog(runId) {
   if (activeLogSocket) activeLogSocket.close();
@@ -174,7 +262,7 @@ async function openRunDialog() {
 function filterRunSuites() {
   const environment = state.environments.find(item => item.id === Number($('#runEnvironment').value));
   const suites = environment ? state.suites.filter(item => item.project_id === environment.project_id) : [];
-  $('#runSuite').innerHTML = suites.map(item => `<option value="${item.id}">${escapeHtml(item.name)} · ${escapeHtml(item.test_type)}</option>`).join('');
+  $('#runSuite').innerHTML = suites.map(item => `<option value="${item.id}">${escapeHtml(item.name)} · ${escapeHtml(item.test_type)}${item.marker ? ` · ${escapeHtml(item.marker)}` : ''}</option>`).join('');
 }
 
 function filterScheduleSuites() {
@@ -186,7 +274,8 @@ function filterScheduleSuites() {
 $('#runForm').addEventListener('submit', async event => {
   event.preventDefault();
   try {
-    const run = await api('/api/runs', {method:'POST', body:JSON.stringify({environment_id:Number($('#runEnvironment').value), suite_id:Number($('#runSuite').value), created_by:$('#runCreator').value || 'local-user'})});
+    if (!await checkExecutionEnvironment()) { toast('执行环境未就绪，请先处理检查项'); return; }
+    const run = await api('/api/runs', {method:'POST', body:JSON.stringify({environment_id:Number($('#runEnvironment').value), suite_id:Number($('#runSuite').value), created_by:$('#runCreator').value || 'local-user', revision_label:$('#runRevision').value.trim()})});
     $('#runDialog').close(); toast(`任务 ${run.run_no} 已进入队列`); switchView('runs'); await loadRuns(); await openRun(run.id);
   } catch (error) { toast(error.message); }
 });
@@ -234,12 +323,26 @@ $('#scheduleEnvironment').addEventListener('change', filterScheduleSuites);
 $('#scanDevicesBtn').addEventListener('click', scanDevices);
 
 window.openRun = openRun; window.cancelRun = cancelRun; window.retryRun = retryRun; window.toggleSchedule = toggleSchedule;
+window.openDefectDialog = openDefectDialog;
+window.retryFailedCases = retryFailedCases; window.regressDefect = regressDefect;
+window.showRegressionHistory = showRegressionHistory; window.compareWithBaseline = compareWithBaseline;
 
 async function initialize() {
   await loadHealth();
   if (!state.token) { showLogin(); return; }
   try { const user = await api('/api/auth/me'); applyUser(user); hideLogin(); await loadConfig(); await loadDashboard(); }
   catch (_) { state.token = ''; localStorage.removeItem('testflow_token'); showLogin(); return; }
-  setInterval(async () => { if (!state.token) return; await loadDashboard(); if ($('#runsView').classList.contains('active')) await loadRuns(); if ($('#devicesView').classList.contains('active')) await loadDevices(); }, 5000);
 }
+setInterval(async () => {
+    if (!state.token) return;
+    try {
+      await loadDashboard();
+      if ($('#runsView').classList.contains('active')) {
+        await loadRuns();
+        const latest = state.runs.find(run => run.id === activeRun?.id);
+        if (latest && latest.status !== activeRun.status) await openRun(latest.id);
+      }
+      if ($('#devicesView').classList.contains('active')) await loadDevices();
+    } catch (error) { toast(error.message); }
+}, 5000);
 initialize().catch(error => toast(error.message));

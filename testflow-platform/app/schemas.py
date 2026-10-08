@@ -70,6 +70,7 @@ class RunCreate(BaseModel):
     environment_id: int
     suite_id: int
     created_by: str = Field(default="local-user", max_length=80)
+    revision_label: str = Field(default="", max_length=120)
 
 
 class RunSummary(ORMModel):
@@ -87,17 +88,21 @@ class RunSummary(ORMModel):
     error_message: str
     created_by: str
     retry_of_run_id: Optional[int]
+    regression_defect_id: Optional[int] = None
+    revision_label: str = ""
     created_at: datetime
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
 
 
 class CaseResultOut(ORMModel):
+    id: int
     case_name: str
     class_name: str
     status: str
     duration: float
     error_message: str
+    node_id: str = ""
 
 
 class ArtifactOut(ORMModel):
@@ -112,6 +117,27 @@ class RunDetail(RunSummary):
     suite_name: str
     case_results: list[CaseResultOut]
     artifacts: list[ArtifactOut]
+    defects: list[DefectOut] = Field(default_factory=list)
+
+
+class DefectCreate(BaseModel):
+    case_result_id: int
+    title: str = Field(min_length=3, max_length=255)
+    steps: str = Field(min_length=3, max_length=10000)
+    severity: int = Field(default=3, ge=1, le=4)
+    priority: int = Field(default=3, ge=1, le=4)
+
+
+class DefectOut(ORMModel):
+    id: int
+    run_id: int
+    case_result_id: int
+    provider: str
+    external_id: str
+    external_url: str
+    title: str
+    submitted_by: str
+    created_at: datetime
 
 
 class DashboardOut(BaseModel):

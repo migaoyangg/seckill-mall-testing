@@ -56,14 +56,6 @@ deliverables/
 output/
 tmp/
 
-### Private career and study materials ###
-docs/*[简][历]*.md
-docs/*目标.md
-docs/re[s]ume-*.md
-docs/seckill-re[s]ume-guide.md
-docs/beginner-testing-guide.md
-tools/*re[s]ume*.py
-
 ### Local performance credentials ###
 scripts/jmeter/tokens.csv
 scripts/jmeter/users.csv
@@ -84,3 +76,6 @@ android-ui-tests/node_modules/
 
 ### TestFlow local database and execution evidence ###
 testflow-platform/data/
+
+### Local assistant workspace ###
+.workbuddy/

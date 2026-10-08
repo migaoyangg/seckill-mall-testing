@@ -1,0 +1,18 @@
+dialog textarea {
+  border: 1px solid #cfd7df;
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+  min-height: 160px;
+}
+dialog textarea:focus {
+  border-color: var(--blue);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(23, 105, 224, .1);
+}
+#defectDialog { width: min(650px, 94vw); max-height: 90vh; overflow: auto; }
+.link-button:disabled { color: #9aa5b1; cursor: not-allowed; }
+#preflightResult { white-space: pre-line; }

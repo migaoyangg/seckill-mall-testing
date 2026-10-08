@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TestFlow 测试任务调度与质量分析平台</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/defects.css">
 </head>
 <body>
   <aside class="sidebar">
@@ -122,8 +123,23 @@
       <label>测试环境<select id="runEnvironment" required></select></label>
       <label>测试套件<select id="runSuite" required></select></label>
       <label>创建人<input id="runCreator" value="蒙冠源" maxlength="80"></label>
+      <label>被测版本<input id="runRevision" placeholder="例如 v1.1 或被测服务的 Git commit" maxlength="120"></label>
+      <button type="button" class="ghost" id="preflightBtn">检查执行环境</button>
+      <div id="preflightResult" class="hint">执行前检查服务、测试配置与设备是否就绪。</div>
       <p class="hint">环境与套件必须属于同一个测试项目。任务创建后由Worker异步执行。</p>
       <div class="dialog-actions"><button type="button" class="ghost" id="cancelDialog">取消</button><button type="submit" class="primary">开始执行</button></div>
+    </form>
+  </dialog>
+  <dialog id="defectDialog">
+    <form id="defectForm">
+      <div class="dialog-head"><div><p class="eyebrow">DEFECT REPORT</p><h2>提交禅道缺陷</h2></div><button type="button" class="icon-button" id="closeDefectDialog">×</button></div>
+      <p class="hint">请先确认这是真实产品缺陷，而非环境或测试脚本问题。提交成功后会在任务详情中显示缺陷链接。</p>
+      <input id="defectCaseId" type="hidden">
+      <label>缺陷标题<input id="defectTitle" maxlength="255" required></label>
+      <label>复现步骤与证据<textarea id="defectSteps" rows="9" maxlength="10000" required></textarea></label>
+      <label>严重程度<select id="defectSeverity"><option value="1">1 致命</option><option value="2">2 严重</option><option value="3" selected>3 一般</option><option value="4">4 轻微</option></select></label>
+      <label>优先级<select id="defectPriority"><option value="1">1 最高</option><option value="2">2 高</option><option value="3" selected>3 中</option><option value="4">4 低</option></select></label>
+      <div class="dialog-actions"><button type="button" class="ghost" id="cancelDefectDialog">取消</button><button type="submit" class="primary" id="submitDefectBtn">确认并提交</button></div>
     </form>
   </dialog>
   <div id="toast" class="toast"></div>

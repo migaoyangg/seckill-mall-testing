@@ -13,10 +13,12 @@ from typing import Optional
 
 from sqlalchemy import delete
 
-from .config import ARTIFACT_ROOT, WORKSPACE_ROOT
+from .config import ARTIFACT_ROOT, BASE_DIR, WORKSPACE_ROOT
+from .preflight import inspect_environment
+from .quality import validate_selectors
 from .broker import TaskBroker, build_broker
 from .appium_manager import AppiumHandle, ensure_appium, stop_appium
-from .db import Artifact, CaseResult, Environment, Project, SessionLocal, TestRun, TestSuite
+from .db import AndroidDevice, Artifact, CaseResult, Environment, Project, SessionLocal, TestRun, TestSuite
 from .devices import acquire_device, release_device
 from .junit_parser import parse_junit
 from .log_stream import run_log_stream
@@ -67,10 +69,15 @@ class RunManager:
     def recover_pending(self) -> None:
         with SessionLocal() as db:
             interrupted = db.query(TestRun).filter(TestRun.status == "RUNNING").all()
+            interrupted_ids = [run.id for run in interrupted]
             for run in interrupted:
                 run.status = "FAILED"
                 run.finished_at = datetime.utcnow()
                 run.error_message = "Platform restarted while task was running"
+            if interrupted_ids:
+                db.query(AndroidDevice).filter(
+                    AndroidDevice.locked_by_run_id.in_(interrupted_ids)
+                ).update({AndroidDevice.locked_by_run_id: None}, synchronize_session=False)
             pending = db.query(TestRun).filter(TestRun.status == "PENDING").order_by(TestRun.id).all()
             db.commit()
             for run in pending:
@@ -113,6 +120,12 @@ class RunManager:
             variables = json.loads(environment.variables_json or "{}")
             base_url = environment.base_url
             run_no = run.run_no
+            selected_nodeids = json.loads(run.selected_nodeids_json or "[]")
+            if selected_nodeids:
+                selected_nodeids = validate_selectors(selected_nodeids, work_dir, test_path)
+            preflight = inspect_environment(project, suite, environment, db.query(AndroidDevice).all())
+            if not preflight["ready"]:
+                raise RuntimeError("执行前检查失败: " + "; ".join(check["name"] + ": " + check["detail"] for check in preflight["checks"] if not check["ready"]))
             device_serial = None
             if suite.device_required:
                 device = acquire_device(db, run_id)
@@ -125,6 +138,7 @@ class RunManager:
         junit_path = run_dir / "junit.xml"
         html_path = run_dir / "report.html"
         log_path = run_dir / "execution.log"
+        business_evidence_path = run_dir / "business-evidence.json"
         appium_log_path = None
         if suite.test_type == "android":
             appium_handle = ensure_appium(run_dir)
@@ -136,8 +150,9 @@ class RunManager:
             self._python_executable_for(test_path),
             "-m",
             "pytest",
-            str(test_path),
+            *(selected_nodeids or [str(test_path)]),
             "-q",
+            "-p", "testflow_metadata",
             f"--junitxml={junit_path}",
             f"--html={html_path}",
             "--self-contained-html",
@@ -147,6 +162,8 @@ class RunManager:
 
         child_env = os.environ.copy()
         child_env.update({str(key): str(value) for key, value in variables.items()})
+        child_env["PYTHONPATH"] = str(BASE_DIR) + os.pathsep + child_env.get("PYTHONPATH", "")
+        child_env["TESTFLOW_BUSINESS_EVIDENCE_PATH"] = str(business_evidence_path)
         if base_url:
             child_env["BASE_URL"] = base_url
         if device_serial:
@@ -215,6 +232,8 @@ class RunManager:
             db.execute(delete(CaseResult).where(CaseResult.run_id == run_id))
             db.execute(delete(Artifact).where(Artifact.run_id == run_id))
             self._add_artifact(db, run_id, "LOG", log_path)
+            if business_evidence_path.exists():
+                self._add_artifact(db, run_id, "BUSINESS_EVIDENCE", business_evidence_path)
             if html_path.exists():
                 self._add_artifact(db, run_id, "HTML_REPORT", html_path)
             if junit_path.exists():
@@ -233,6 +252,7 @@ class RunManager:
                             status=case.status,
                             duration=case.duration,
                             error_message=case.error_message,
+                            node_id=case.node_id,
                         )
                     )
             if appium_log_path and appium_log_path.exists():

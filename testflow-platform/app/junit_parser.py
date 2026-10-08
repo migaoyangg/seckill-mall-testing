@@ -12,6 +12,7 @@ class ParsedCase:
     status: str
     duration: float
     error_message: str
+    node_id: str = ""
 
 
 @dataclass
@@ -51,6 +52,7 @@ def parse_junit(path: Path) -> ParsedReport:
                     status=status,
                     duration=float(node.get("time", "0") or 0),
                     error_message=message[:4000],
+                    node_id=next((prop.get("value", "") for prop in node.findall("./properties/property") if prop.get("name") == "testflow_nodeid"), ""),
                 )
             )
 
@@ -65,4 +67,3 @@ def parse_junit(path: Path) -> ParsedReport:
         duration=sum(case.duration for case in cases),
         cases=cases,
     )
-

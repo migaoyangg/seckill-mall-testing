@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, inspect, text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 from .config import DATABASE_URL
@@ -75,6 +75,9 @@ class TestRun(Base):
     error_message: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(String(80), default="local-user")
     retry_of_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("test_run.id"), nullable=True)
+    selected_nodeids_json: Mapped[str] = mapped_column(Text, default="[]")
+    regression_defect_id: Mapped[Optional[int]] = mapped_column(ForeignKey("defect_submission.id"), nullable=True)
+    revision_label: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -96,6 +99,22 @@ class CaseResult(Base):
     status: Mapped[str] = mapped_column(String(20))
     duration: Mapped[float] = mapped_column(Float, default=0)
     error_message: Mapped[str] = mapped_column(Text, default="")
+    node_id: Mapped[str] = mapped_column(String(1500), default="")
+
+
+class DefectSubmission(Base):
+    __tablename__ = "defect_submission"
+    __table_args__ = (UniqueConstraint("case_result_id", "provider", name="uq_defect_case_provider"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("test_run.id"), index=True)
+    case_result_id: Mapped[int] = mapped_column(ForeignKey("test_case_result.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(40), default="zentao")
+    external_id: Mapped[str] = mapped_column(String(80))
+    external_url: Mapped[str] = mapped_column(String(1000))
+    title: Mapped[str] = mapped_column(String(255))
+    submitted_by: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class Artifact(Base):
@@ -176,6 +195,16 @@ def init_db() -> None:
     if "retry_of_run_id" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE test_run ADD COLUMN retry_of_run_id INTEGER"))
+    with engine.begin() as connection:
+        if "selected_nodeids_json" not in columns:
+            connection.execute(text("ALTER TABLE test_run ADD COLUMN selected_nodeids_json TEXT DEFAULT '[]' NOT NULL"))
+        if "regression_defect_id" not in columns:
+            connection.execute(text("ALTER TABLE test_run ADD COLUMN regression_defect_id INTEGER"))
+        if "revision_label" not in columns:
+            connection.execute(text("ALTER TABLE test_run ADD COLUMN revision_label VARCHAR(120) DEFAULT '' NOT NULL"))
+        case_columns = {column["name"] for column in inspect(engine).get_columns("test_case_result")}
+        if "node_id" not in case_columns:
+            connection.execute(text("ALTER TABLE test_case_result ADD COLUMN node_id VARCHAR(1500) DEFAULT '' NOT NULL"))
 
 
 def get_db():

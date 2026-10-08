@@ -18,14 +18,19 @@ from sqlalchemy.orm import Session, selectinload
 
 from .auth import authenticate_token, create_session, get_current_user, hash_password, require_roles, security, seed_admin, token_hash, verify_password
 from .config import ARTIFACT_ROOT, BASE_DIR, WORKSPACE_ROOT
-from .db import AndroidDevice, Artifact, AuthSession, CaseResult, Environment, Project, SessionLocal, SystemUser, TestRun, TestSchedule, TestSuite, get_db, init_db
+from .db import AndroidDevice, Artifact, AuthSession, CaseResult, DefectSubmission, Environment, Project, SessionLocal, SystemUser, TestRun, TestSchedule, TestSuite, get_db, init_db
+from .defects import DefectProviderError, create_zentao_bug, zentao_configured
 from .devices import scan_devices
 from .runner import FINAL_STATUSES, run_manager
 from .log_stream import run_log_stream
 from .run_service import create_run_record
 from .scheduler import schedule_manager
+from .quality import compare_cases, stability_cases, validate_selectors
+from .preflight import inspect_environment
 from .schemas import (
     DashboardOut,
+    DefectCreate,
+    DefectOut,
     DeviceOut,
     EnvironmentCreate,
     EnvironmentOut,
@@ -81,6 +86,12 @@ def seed_demo_data() -> None:
             db.add(TestSuite(project_id=mall.id, name="商城接口冒烟", test_type="api", test_path="tests/api", marker="smoke", timeout_seconds=600))
         if "Android UI 全量回归" not in existing_names:
             db.add(TestSuite(project_id=mall.id, name="Android UI 全量回归", test_type="android", test_path="android-ui-tests", marker="", timeout_seconds=1800, device_required=True))
+        if not db.query(Environment).filter_by(project_id=mall.id, name="商城数据一致性环境").first():
+            db.add(Environment(project_id=mall.id, name="商城数据一致性环境", base_url="http://127.0.0.1:8080/api",
+                               variables_json=json.dumps({"API_TEST_DATA_VALIDATION": "true"})))
+        for name, marker in [("订单退款与库存一致性", "data_validation and not seckill"), ("秒杀异步订单与库存一致性", "seckill")]:
+            if name not in existing_names:
+                db.add(TestSuite(project_id=mall.id, name=name, test_type="api", test_path="tests/api", marker=marker, timeout_seconds=600))
         db.commit()
 
 
@@ -249,7 +260,75 @@ def create_run(payload: RunCreate, db: Session = Depends(get_db), _: SystemUser 
         raise HTTPException(404, "Environment or suite not found")
     if environment.project_id != suite.project_id:
         raise HTTPException(400, "Environment and suite belong to different projects")
-    return create_run_record(db, environment, suite, payload.created_by)
+    return create_run_record(db, environment, suite, payload.created_by, revision_label=payload.revision_label)
+
+
+@app.post("/api/preflight")
+def preflight_check(payload: RunCreate, db: Session = Depends(get_db), _: SystemUser = Depends(require_roles("ADMIN", "TESTER"))):
+    environment, suite = db.get(Environment, payload.environment_id), db.get(TestSuite, payload.suite_id)
+    if not environment or not suite or environment.project_id != suite.project_id:
+        raise HTTPException(400, "Select an environment and suite from the same project")
+    return inspect_environment(require_project(db, suite.project_id), suite, environment, db.query(AndroidDevice).all())
+
+
+def exact_retry(db, run, cases, user, defect_id=None):
+    if run.status not in FINAL_STATUSES:
+        raise HTTPException(409, "Wait for the original run to finish")
+    if not cases or any(not case.node_id for case in cases):
+        raise HTTPException(409, "No exact pytest selectors recorded; execute the suite once with the updated platform")
+    try:
+        selected = validate_selectors([case.node_id for case in cases], run.project.work_dir, Path(run.project.work_dir) / run.suite.test_path)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return create_run_record(db, run.environment, run.suite, user.username, retry_of_run_id=run.id,
+                             selected_nodeids=selected, regression_defect_id=defect_id)
+
+
+@app.post("/api/runs/{run_id}/retry-failed", response_model=RunSummary, status_code=202)
+def retry_failed_cases(run_id: int, db: Session = Depends(get_db), user: SystemUser = Depends(require_roles("ADMIN", "TESTER"))):
+    run = db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    cases = db.query(CaseResult).filter_by(run_id=run_id, status="FAILED").all()
+    return exact_retry(db, run, cases, user)
+
+
+@app.post("/api/defects/{defect_id}/regression", response_model=RunSummary, status_code=202)
+def defect_regression(defect_id: int, db: Session = Depends(get_db), user: SystemUser = Depends(require_roles("ADMIN", "TESTER"))):
+    defect = db.get(DefectSubmission, defect_id)
+    if not defect:
+        raise HTTPException(404, "Defect not found")
+    run, case = db.get(TestRun, defect.run_id), db.get(CaseResult, defect.case_result_id)
+    return exact_retry(db, run, [case] if case else [], user, defect.id)
+
+
+@app.get("/api/defects/{defect_id}/regressions")
+def regression_history(defect_id: int, db: Session = Depends(get_db), _: SystemUser = Depends(require_roles("ADMIN", "TESTER", "VIEWER"))):
+    if not db.get(DefectSubmission, defect_id):
+        raise HTTPException(404, "Defect not found")
+    runs = db.query(TestRun).filter_by(regression_defect_id=defect_id).order_by(desc(TestRun.id)).all()
+    return [{"id": run.id, "run_no": run.run_no, "status": run.status,
+             "verified": run.status == "PASSED" and run.total_count > 0 and run.passed_count == run.total_count and run.skipped_count == 0,
+             "passed": run.passed_count, "total": run.total_count} for run in runs]
+
+
+@app.get("/api/runs/{run_id}/quality")
+def run_quality(run_id: int, baseline_id: Optional[int] = None, db: Session = Depends(get_db), _: SystemUser = Depends(require_roles("ADMIN", "TESTER", "VIEWER"))):
+    run = db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    history = db.query(TestRun).options(selectinload(TestRun.case_results)).filter(
+        TestRun.suite_id == run.suite_id, TestRun.environment_id == run.environment_id,
+        TestRun.id <= run.id, TestRun.status.in_(["PASSED", "FAILED"]),
+        TestRun.selected_nodeids_json == "[]",
+    ).order_by(desc(TestRun.id)).limit(20).all()
+    baseline = db.get(TestRun, baseline_id) if baseline_id else next((item for item in history if item.id < run.id), None)
+    if baseline and (baseline.suite_id != run.suite_id or baseline.environment_id != run.environment_id):
+        raise HTTPException(400, "Compare runs from the same suite and environment")
+    return {"baseline_id": baseline.id if baseline else None,
+            "baseline_revision": baseline.revision_label if baseline else "", "current_revision": run.revision_label,
+            "comparison": compare_cases(baseline.case_results, run.case_results) if baseline and run.status in FINAL_STATUSES else None,
+            "suspected_unstable": stability_cases(history), "sample_runs": len(history)}
 
 
 @app.get("/api/runs/{run_id}", response_model=RunDetail)
@@ -269,7 +348,45 @@ def get_run(run_id: int, db: Session = Depends(get_db), _: SystemUser = Depends(
         suite_name=run.suite.name,
         case_results=run.case_results,
         artifacts=run.artifacts,
+        defects=db.query(DefectSubmission).filter(DefectSubmission.run_id == run_id).order_by(DefectSubmission.id).all(),
     )
+
+
+@app.get("/api/defects/config")
+def defect_config(_: SystemUser = Depends(require_roles("ADMIN", "TESTER", "VIEWER"))):
+    return {"provider": "zentao", "configured": zentao_configured()}
+
+
+@app.post("/api/runs/{run_id}/defects", response_model=DefectOut, status_code=201)
+def submit_defect(
+    run_id: int,
+    payload: DefectCreate,
+    db: Session = Depends(get_db),
+    user: SystemUser = Depends(require_roles("ADMIN", "TESTER")),
+):
+    run = db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    case = db.get(CaseResult, payload.case_result_id)
+    if not case or case.run_id != run_id or case.status != "FAILED":
+        raise HTTPException(400, "Select a failed case from this run")
+    if db.query(DefectSubmission).filter_by(case_result_id=case.id, provider="zentao").first():
+        raise HTTPException(409, "This case has already been submitted to ZenTao")
+    try:
+        external_id, external_url = create_zentao_bug(
+            title=payload.title, steps=payload.steps,
+            severity=payload.severity, priority=payload.priority,
+        )
+    except DefectProviderError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    submission = DefectSubmission(
+        run_id=run_id, case_result_id=case.id, external_id=external_id,
+        external_url=external_url, title=payload.title, submitted_by=user.username,
+    )
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    return submission
 
 
 @app.get("/api/runs/{run_id}/log")
@@ -280,6 +397,25 @@ def get_run_log(run_id: int, db: Session = Depends(get_db), _: SystemUser = Depe
     log_path = ARTIFACT_ROOT / run.run_no / "execution.log"
     content = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
     return {"run_id": run_id, "content": content[-100_000:]}
+
+
+@app.get("/api/runs/{run_id}/business-evidence")
+def get_business_evidence(run_id: int, db: Session = Depends(get_db), _: SystemUser = Depends(require_roles("ADMIN", "TESTER", "VIEWER"))):
+    run = db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    path = ARTIFACT_ROOT / run.run_no / "business-evidence.json"
+    if not path.exists():
+        return {"version": 1, "checks": []}
+    if path.stat().st_size > 2_000_000:
+        raise HTTPException(413, "Business evidence exceeds size limit")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or not isinstance(payload.get("checks"), list):
+            raise ValueError("Invalid evidence format")
+        return payload
+    except (ValueError, OSError) as exc:
+        raise HTTPException(422, "Business evidence is unavailable or malformed") from exc
 
 
 @app.websocket("/ws/runs/{run_id}/logs")
@@ -338,7 +474,9 @@ def retry_run(run_id: int, db: Session = Depends(get_db), _: SystemUser = Depend
     suite = db.get(TestSuite, previous.suite_id)
     if not environment or not suite:
         raise HTTPException(409, "Original environment or suite no longer exists")
-    return create_run_record(db, environment, suite, previous.created_by, retry_of_run_id=previous.id)
+    return create_run_record(db, environment, suite, previous.created_by, retry_of_run_id=previous.id,
+                             selected_nodeids=json.loads(previous.selected_nodeids_json or "[]"),
+                             regression_defect_id=previous.regression_defect_id)
 
 
 @app.get("/api/schedules", response_model=list[ScheduleOut])

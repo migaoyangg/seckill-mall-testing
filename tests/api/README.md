@@ -2,6 +2,14 @@
 
 该目录是项目一的 Python 接口自动化框架，统一管理环境配置、HTTP 客户端、公共断言、认证会话、用例分类和测试报告。
 
+## 业务数据证据与隔离
+
+订单退款和取消校验现在使用独立命名的测试商品；秒杀测试独立创建商品和活动。工厂登记本轮订单，并通过取消／退款、关闭活动和删除测试商品回收数据。清理失败作为 teardown 错误上报，不静默当成成功。这里删除的是测试工厂创建的商品，不删除既有业务商品；订单保留业务状态记录。
+
+数据一致性用例需要 `API_TEST_DATA_VALIDATION=true`，以及 `API_TEST_USERNAME`、`API_TEST_PASSWORD`、`API_TEST_ADMIN_USERNAME`、`API_TEST_ADMIN_PASSWORD` 和 `API_TEST_MYSQL_PASSWORD` 等环境配置。秒杀成功链路有期限地轮询异步结果和订单落库，并校验 MySQL 与 Redis 库存。普通订单校验退款状态、库存回补与取消后的 Redis 超时 Key。
+
+设置 `TESTFLOW_BUSINESS_EVIDENCE_PATH` 后，会输出 JSON 证据，包含用例、数据准备／断言／清理阶段、预期值、实际值及结果；不记录密码、Token 或原始请求正文。当前证据汇总用于单进程 pytest，不支持 xdist 并行汇总。TestFlow 会自动注入每个任务独立的证据路径并归档展示。
+
 ## 目录结构
 
 ```text
